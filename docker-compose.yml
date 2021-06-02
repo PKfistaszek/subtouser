@@ -1,0 +1,24 @@
+version: '3'
+
+services:
+  db:
+    image: postgres:11.0-alpine
+  web:
+    build: .
+    command: python3 manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./app:/code 
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      - WDB_SOCKET_SERVER=wdb
+      - WDB_NO_BROWSER_AUTO_OPEN=True
+  wdb:               
+    image: kozea/wdb
+    ports:
+      - "1984:1984"
+
+volumes:
+  postgres_data:
