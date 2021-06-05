@@ -38,7 +38,9 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django_extensions',
-    'subtouser',
+    'phonenumber_field',
+    'subscriber',
+    'user',
 ]
 
 MIDDLEWARE = [
