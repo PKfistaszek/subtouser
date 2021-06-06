@@ -9,3 +9,4 @@ django-phonenumber-field==5.2.0
 mock==3.0.5
 black==21.5b2
 isort==5.8.0
+freezegun==0.3.4

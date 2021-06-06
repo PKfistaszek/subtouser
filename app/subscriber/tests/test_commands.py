@@ -1,8 +1,11 @@
+from datetime import datetime, timedelta
+
 from django.conf import settings
 from django.core.management import call_command
 from django.db import connection, reset_queries
 from django.test import TestCase
 
+from freezegun import freeze_time
 from mock import Mock, patch
 
 from user.models import User
@@ -269,3 +272,140 @@ class CommandsMigrateSubscriberToUserTestCase(TestCase):
             ).exists()
         )
         print(len(connection.queries))
+
+
+@freeze_time("2017-06-18")
+class CommandsMigrateMissingDataFromSubscriberToUserTestCase(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        settings.DEBUG = True
+
+    def setUp(self):
+        super().setUp()
+        now = datetime.now()
+        self.ONE_DAY_AGO = now - timedelta(days=1)
+        self.WEEK_AGO = now - timedelta(days=7)
+        self.MONTH_AGO = now - timedelta(days=30)
+
+        # some extra data wich help with reduce the number o queries
+        first_subscriber = SubscriberFactory.create_batch(10)[0]
+        first_subscriber_sms = SubscriberSMSFactory.create_batch(10)[0]
+        user = UserFactory(email=first_subscriber.email, gdpr_consent=False)
+        user.created = self.MONTH_AGO
+        user.save()
+        user_2 = UserFactory(phone=first_subscriber_sms.phone, gdpr_consent=False)
+        user_2.created = self.MONTH_AGO
+        user_2.save()
+
+        reset_queries()
+
+    def test_migrate_subscriber_if_created_data_is_newer_then_user(self):
+        # Arrange
+        UserFactory.create_batch(5)
+        subscriber = SubscriberFactory(gdpr_consent=True)
+        user = UserFactory(email=subscriber.email, gdpr_consent=False)
+        user.created = self.ONE_DAY_AGO
+        user.save()
+
+        reset_queries()
+        # Act
+        call_command("migrate_missing_data_from_subscriber_to_user")
+
+        # Assert
+        print(len(connection.queries))
+        user.refresh_from_db()
+        self.assertTrue(user.gdpr_consent)
+
+    def test_migrate_subscriber_sms_if_created_data_is_newer_then_user(self):
+        # Arrange
+        UserFactory.create_batch(5)
+        subscriber_sms = SubscriberSMSFactory(gdpr_consent=True)
+        user = UserFactory(phone=subscriber_sms.phone, gdpr_consent=False)
+        user.created = self.ONE_DAY_AGO
+        user.save()
+
+        reset_queries()
+        # Act
+        call_command("migrate_missing_data_from_subscriber_to_user")
+
+        # Assert
+        print(len(connection.queries))
+        user.refresh_from_db()
+        self.assertTrue(user.gdpr_consent)
+
+    def test_migrate_subscriber_for_user_created_from_client_with_phone_and_email_subscriber_has_the_newer_date(self):  # noqa
+        # Arrange
+        UserFactory.create_batch(5)
+        subscriber = SubscriberFactory(gdpr_consent=True)
+        subscriber.created = self.ONE_DAY_AGO
+        subscriber.save()
+
+        subscriber_sms = SubscriberSMSFactory(gdpr_consent=False)
+        subscriber_sms.created = self.WEEK_AGO
+        subscriber_sms.save()
+
+        user = UserFactory(
+            email=subscriber.email, phone=subscriber_sms.phone, gdpr_consent=False
+        )
+        user.created = self.MONTH_AGO
+        user.save()
+
+        reset_queries()
+        # Act
+        call_command("migrate_missing_data_from_subscriber_to_user")
+
+        # Assert
+        print(len(connection.queries))
+        user.refresh_from_db()
+        self.assertTrue(user.gdpr_consent)
+
+    def test_migrate_subscriber_for_user_created_from_client_with_phone_and_email_subscriber_sms_has_the_newer_date(self):  # noqa
+        # Arrange
+        UserFactory.create_batch(5)
+        subscriber = SubscriberFactory(gdpr_consent=False)
+        subscriber.created = self.WEEK_AGO
+        subscriber.save()
+
+        subscriber_sms = SubscriberSMSFactory(gdpr_consent=True)
+        subscriber_sms.created = self.ONE_DAY_AGO
+        subscriber_sms.save()
+
+        user = UserFactory(
+            email=subscriber.email, phone=subscriber_sms.phone, gdpr_consent=False
+        )
+        user.created = self.MONTH_AGO
+        user.save()
+
+        reset_queries()
+        # Act
+        call_command("migrate_missing_data_from_subscriber_to_user")
+
+        # Assert
+        print(len(connection.queries))
+        user.refresh_from_db()
+        self.assertTrue(user.gdpr_consent)
+
+    def test_migrate_subscriber_for_user_created_from_client_with_phone_and_email_user_has_the_newer_date(self):  # noqa
+        # Arrange
+        UserFactory.create_batch(5)
+        subscriber = SubscriberFactory(gdpr_consent=True)
+        subscriber.created = self.WEEK_AGO
+        subscriber.save()
+
+        subscriber_sms = SubscriberSMSFactory(gdpr_consent=True)
+        subscriber_sms.created = self.ONE_DAY_AGO
+        subscriber_sms.save()
+
+        user = UserFactory(
+            email=subscriber.email, phone=subscriber_sms.phone, gdpr_consent=False
+        )
+        reset_queries()
+
+        # Act
+        call_command("migrate_missing_data_from_subscriber_to_user")
+
+        # Assert
+        print(len(connection.queries))
+        user.refresh_from_db()
+        self.assertFalse(user.gdpr_consent)
